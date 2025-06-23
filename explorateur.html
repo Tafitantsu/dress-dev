@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Explorateur de Ressources DevOps Gratuites</title>
+    <title>Explorateur de Ressources DevOps (Microservices)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -69,6 +69,10 @@
         <header class="text-center mb-10">
             <h1 class="text-4xl md:text-5xl font-bold text-sky-800 mb-2">Explorateur de Ressources DevOps</h1>
             <p class="text-lg text-stone-600 max-w-3xl mx-auto">Un tableau de bord interactif pour naviguer dans le monde des ressources DevOps gratuites. Trouvez les meilleurs cours, outils et communautés pour faire avancer votre carrière.</p>
+             <div class="flex justify-center items-center mt-4 gap-4">
+                <button id="login-btn" class="bg-blue-500 text-white py-2 px-4 rounded-full text-sm font-semibold hover:bg-blue-600 transition">Se Connecter</button>
+                <span id="user-display" class="text-stone-700 text-sm hidden">Bienvenue, Utilisateur Test !</span>
+            </div>
         </header>
 
         <section id="visuals" class="mb-12">
@@ -135,7 +139,9 @@
 
 
     <script>
-    const resourcesData = [
+    // --- Mock Data for Simulation ---
+    // In a real microservices architecture, this data would come from a 'Resource Management Service' API.
+    const mockResourcesData = [
         {
             id: 1, name: "Microsoft Learn", type: "Plateforme",
             summary: "Parcours d'apprentissage structurés sur Azure DevOps, de la planification au déploiement.",
@@ -306,6 +312,57 @@
         }
     ];
 
+    let resourcesData = []; // This will be populated by the simulated fetch
+
+    // --- User Authentication Simulation ---
+    let isAuthenticated = false;
+    let userName = '';
+
+    const loginUser = () => {
+        // Simule un appel API au service d'authentification
+        setTimeout(() => {
+            isAuthenticated = true;
+            userName = 'Utilisateur Test';
+            document.getElementById('login-btn').textContent = 'Se Déconnecter';
+            document.getElementById('login-btn').classList.remove('bg-blue-500', 'hover:bg-blue-600');
+            document.getElementById('login-btn').classList.add('bg-red-500', 'hover:bg-red-600');
+            document.getElementById('user-display').textContent = `Bienvenue, ${userName} !`;
+            document.getElementById('user-display').classList.remove('hidden');
+            sendAnalyticsEvent('user_logged_in', { userId: userName });
+        }, 500);
+    };
+
+    const logoutUser = () => {
+        // Simule un appel API au service d'authentification
+        setTimeout(() => {
+            isAuthenticated = false;
+            userName = '';
+            document.getElementById('login-btn').textContent = 'Se Connecter';
+            document.getElementById('login-btn').classList.remove('bg-red-500', 'hover:bg-red-600');
+            document.getElementById('login-btn').classList.add('bg-blue-500', 'hover:bg-blue-600');
+            document.getElementById('user-display').classList.add('hidden');
+            sendAnalyticsEvent('user_logged_out', { userId: 'anonymous' });
+        }, 500);
+    };
+
+    // --- Analytics Service Simulation ---
+    const sendAnalyticsEvent = async (eventName, payload) => {
+        console.log(`[ANALYTICS] Envoyer l'événement: ${eventName}`, payload);
+        // En production, ceci ferait un appel `fetch` à un endpoint /api/analytics
+        /*
+        try {
+            await fetch('/api/analytics', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ eventName, payload, timestamp: new Date().toISOString() })
+            });
+        } catch (error) {
+            console.error("Échec de l'envoi de l'événement analytique:", error);
+        }
+        */
+    };
+
+
     document.addEventListener('DOMContentLoaded', () => {
         const grid = document.getElementById('resource-grid');
         const searchInput = document.getElementById('search-input');
@@ -314,9 +371,21 @@
         const modal = document.getElementById('modal');
         const modalBody = document.getElementById('modal-body');
         const modalClose = document.getElementById('modal-close');
+        const loginButton = document.getElementById('login-btn');
 
         let currentFilter = 'all';
         let currentSearch = '';
+
+        // --- Resource Management Service Interaction ---
+        const fetchResources = async () => {
+            // Simule un appel API au service de gestion des ressources
+            // En production, ce serait un fetch réel: fetch('/api/resources')
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    resolve(mockResourcesData); // Utilise les données mockées pour la simulation
+                }, 300);
+            });
+        };
 
         const renderCards = () => {
             let filteredData = resourcesData;
@@ -380,7 +449,9 @@
             const item = resourcesData.find(i => i.id == id);
             if (!item) return;
 
-             let typeColor = 'text-stone-500';
+            sendAnalyticsEvent('resource_viewed', { resourceId: item.id, resourceName: item.name });
+
+            let typeColor = 'text-stone-500';
                 switch(item.type) {
                     case 'Plateforme': typeColor = 'text-blue-600'; break;
                     case 'YouTube': typeColor = 'text-red-600'; break;
@@ -464,7 +535,10 @@
              }
         };
 
+        // --- AI Explanation Service Interaction (simulated) ---
         const explainTopic = async (topic) => {
+            sendAnalyticsEvent('topic_explained', { topic: topic, resourceId: document.getElementById('modal').dataset.resourceId });
+
             const explanationOutput = document.getElementById('explanation-output');
             const loadingIndicator = explanationOutput.querySelector('.explanation-loading');
             const explanationText = explanationOutput.querySelector('.explanation-text');
@@ -476,6 +550,10 @@
             explainButton.disabled = true; // Disable button during loading
 
             try {
+                // En production, ceci ferait un appel à un service d'explication IA:
+                // const response = await fetch('/api/ai/explain-topic', { method: 'POST', body: JSON.stringify({ topic }) });
+                // const result = await response.json();
+
                 const prompt = `Expliquez le concept de ${topic} en termes simples, en mettant l'accent sur sa pertinence dans le domaine du DevOps. Soyez concis et utilisez un langage clair, adapté aux débutants.`;
                 let chatHistory = [];
                 chatHistory.push({ role: "user", parts: [{ text: prompt }] });
@@ -490,6 +568,7 @@
                 });
                 const result = await response.json();
 
+
                 if (result.candidates && result.candidates.length > 0 &&
                     result.candidates[0].content && result.candidates[0].content.parts &&
                     result.candidates[0].content.parts.length > 0) {
@@ -499,7 +578,7 @@
                     explanationText.innerHTML = "Désolé, je n'ai pas pu générer d'explication pour le moment. Veuillez réessayer.";
                 }
             } catch (error) {
-                console.error("Erreur lors de l'appel de l'API Gemini:", error);
+                console.error("Erreur lors de l'appel de l'API Gemini ou du service AI Explanation:", error);
                 explanationText.innerHTML = "Une erreur est survenue lors de la récupération de l'explication. Veuillez vérifier votre connexion ou réessayer.";
             } finally {
                 loadingIndicator.classList.add('hidden');
@@ -507,7 +586,10 @@
             }
         };
 
+        // --- Learning Path Service Interaction (simulated) ---
         const suggestLearningSteps = async (topic) => {
+            sendAnalyticsEvent('learning_path_suggested', { topic: topic, resourceId: document.getElementById('modal').dataset.resourceId });
+
             const suggestionOutput = document.getElementById('suggestion-output');
             const loadingIndicator = suggestionOutput.querySelector('.suggestion-loading');
             const suggestionText = suggestionOutput.querySelector('.suggestion-text');
@@ -519,6 +601,10 @@
             suggestButton.disabled = true; // Disable button during loading
 
             try {
+                // En production, ceci ferait un appel à un service de recommandation:
+                // const response = await fetch('/api/ai/suggest-learning-path', { method: 'POST', body: JSON.stringify({ topic }) });
+                // const result = await response.json();
+
                 const prompt = `En tant qu'expert DevOps, proposez 3 à 5 étapes d'apprentissage concrètes ou sujets connexes qu'une personne intéressée par '${topic}' devrait explorer ensuite pour approfondir ses connaissances en DevOps. Pour chaque suggestion, indiquez brièvement pourquoi c'est important et quel type de ressource (ex: cours, lab pratique, documentation, communauté) serait le plus adapté. Formatez la réponse comme une liste HTML non ordonnée (<ul><li>...).`;
                 let chatHistory = [];
                 chatHistory.push({ role: "user", parts: [{ text: prompt }] });
@@ -542,7 +628,7 @@
                     suggestionText.innerHTML = "Désolé, je n'ai pas pu générer de suggestions pour le moment. Veuillez réessayer.";
                 }
             } catch (error) {
-                console.error("Erreur lors de l'appel de l'API Gemini pour les suggestions:", error);
+                console.error("Erreur lors de l'appel de l'API Gemini pour les suggestions ou du service Learning Path:", error);
                 suggestionText.innerHTML = "Une erreur est survenue lors de la récupération des suggestions. Veuillez vérifier votre connexion ou réessayer.";
             } finally {
                 loadingIndicator.classList.add('hidden');
@@ -578,6 +664,14 @@
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
                 closeModal();
+            }
+        });
+
+        loginButton.addEventListener('click', () => {
+            if (isAuthenticated) {
+                logoutUser();
+            } else {
+                loginUser();
             }
         });
 
@@ -681,8 +775,12 @@
             });
         };
 
-        renderCards();
-        createCharts();
+        // Initialize application by fetching resources and creating charts
+        fetchResources().then(data => {
+            resourcesData = data;
+            renderCards();
+            createCharts();
+        });
     });
     </script>
 </body>
