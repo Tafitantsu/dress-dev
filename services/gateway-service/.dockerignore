@@ -1,0 +1,6 @@
+# This service primarily uses configuration and a base Docker image,
+# so there might not be many files to ignore other than Git-related ones.
+.git
+.gitignore
+Dockerfile
+# If you had other local files for templating nginx.conf or scripts, list them here.
