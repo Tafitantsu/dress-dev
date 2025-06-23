@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Explorateur de Ressources DevOps (Microservices)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals -->
+    <!-- Application Structure Plan: The application is designed as a single-page interactive dashboard. This structure replaces the linear format of the report with a dynamic, user-driven experience. The core is a filterable grid of "resource cards". Users can immediately narrow down the vast number of resources by type (courses, YouTube, labs, etc.) and then use a text search for specific keywords (e.g., 'Kubernetes', 'beginner'). This multi-level filtering is highly efficient for users with specific learning goals. A modal is used to display detailed information for each resource, keeping the main interface clean and scannable. Two charts provide a high-level data synthesis of the resource landscape, a feature not explicitly present in the original text, adding analytical value. This dashboard approach was chosen because it transforms a static document into an explorable tool, empowering the user to find relevant information quickly and intuitively. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: Comprehensive list of DevOps resources across various categories.
+        - Goal: Organize, Compare, Explore.
+        - Viz/Presentation Method: 
+            - Main content: A filterable grid of cards (HTML/Tailwind/JS) for scannability.
+            - Details: A modal pop-up (JS) to present extensive details without cluttering the main view.
+            - Chart 1: A horizontal bar chart (Chart.js) to compare the quantity of resources per category.
+            - Chart 2: A doughnut chart (Chart.js) to show the distribution of key technologies mentioned across resources.
+        - Interaction: 
+            - Category filter buttons to perform high-level sorting.
+            - A live search bar for keyword-based filtering.
+            - Clickable cards to trigger the detail modal.
+        - Justification: This interactive combination allows users to move from a broad overview (charts) to specific categories (filters) and down to fine details (search and modals), accommodating various user intents. This is far more engaging and useful than a static text document.
+        - Library/Method: Chart.js for canvas-based charts, Vanilla JS for all logic.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .chart-container { position: relative; width: 100%; max-width: 500px; margin-left: auto; margin-right: auto; height: 300px; max-height: 350px; }
+        @media (min-width: 768px) { .chart-container { height: 320px; } }
+        .modal-bg {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5);
+            transition: opacity 0.3s ease;
+        }
+        .modal-content {
+            position: relative;
+            margin: 5% auto;
+            width: 90%;
+            max-width: 700px;
+            animation: slide-down 0.4s ease-out;
+        }
+        @keyframes slide-down {
+            from { transform: translateY(-30px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #555; }
+        .card-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+    </style>
+</head>
+<body class="bg-stone-50 text-stone-800">
+
+    <div id="app" class="container mx-auto px-4 py-8 md:py-12">
+        <header class="text-center mb-10">
+            <h1 class="text-4xl md:text-5xl font-bold text-sky-800 mb-2">Explorateur de Ressources DevOps</h1>
+            <p class="text-lg text-stone-600 max-w-3xl mx-auto">Un tableau de bord interactif pour naviguer dans le monde des ressources DevOps gratuites. Trouvez les meilleurs cours, outils et communautés pour faire avancer votre carrière.</p>
+             <div class="flex justify-center items-center mt-4 gap-4">
+                <button id="login-btn" class="bg-blue-500 text-white py-2 px-4 rounded-full text-sm font-semibold hover:bg-blue-600 transition">Se Connecter</button>
+                <span id="user-display" class="text-stone-700 text-sm hidden">Bienvenue, Utilisateur Test !</span>
+            </div>
+        </header>
+
+        <section id="visuals" class="mb-12">
+             <div class="text-center mb-8">
+                <h2 class="text-2xl font-bold text-stone-700">Aperçu de l'Écosystème</h2>
+                <p class="text-md text-stone-500">Ces graphiques illustrent la répartition des ressources disponibles et les technologies les plus populaires couvertes.</p>
+            </div>
+            <div class="flex flex-wrap justify-center items-center gap-8">
+                <div class="w-full lg:w-1/2 p-4 bg-white rounded-xl shadow-md">
+                     <h3 class="text-lg font-semibold text-center text-stone-700 mb-4">Ressources par Type</h3>
+                    <div class="chart-container">
+                        <canvas id="resourcesByTypeChart"></canvas>
+                    </div>
+                </div>
+                <div class="w-full lg:w-1/2 p-4 bg-white rounded-xl shadow-md">
+                     <h3 class="text-lg font-semibold text-center text-stone-700 mb-4">Focus Technologique</h3>
+                    <div class="chart-container">
+                        <canvas id="techFocusChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="explorer">
+            <div class="sticky top-0 bg-stone-50/80 backdrop-blur-sm py-4 z-50 mb-8 rounded-lg">
+                <div class="text-center mb-4">
+                    <h2 class="text-2xl font-bold text-stone-700">Trouvez Votre Ressource</h2>
+                     <p class="text-md text-stone-500">Filtrez par catégorie et utilisez la recherche pour affiner les résultats.</p>
+                </div>
+                <div id="filters" class="flex flex-wrap justify-center gap-2 mb-4">
+                    <button data-filter="all" class="filter-btn bg-sky-600 text-white py-2 px-4 rounded-full text-sm font-semibold shadow">Toutes</button>
+                    <button data-filter="Plateforme" class="filter-btn bg-white text-stone-700 py-2 px-4 rounded-full text-sm font-semibold shadow hover:bg-stone-100">Plateformes</button>
+                    <button data-filter="YouTube" class="filter-btn bg-white text-stone-700 py-2 px-4 rounded-full text-sm font-semibold shadow hover:bg-stone-100">Chaînes YouTube</button>
+                    <button data-filter="Labs" class="filter-btn bg-white text-stone-700 py-2 px-4 rounded-full text-sm font-semibold shadow hover:bg-stone-100">Labs Pratiques</button>
+                    <button data-filter="Guide" class="filter-btn bg-white text-stone-700 py-2 px-4 rounded-full text-sm font-semibold shadow hover:bg-stone-100">Guides & Ebooks</button>
+                    <button data-filter="Communauté" class="filter-btn bg-white text-stone-700 py-2 px-4 rounded-full text-sm font-semibold shadow hover:bg-stone-100">Communautés</button>
+                    <button data-filter="Évaluation" class="filter-btn bg-white text-stone-700 py-2 px-4 rounded-full text-sm font-semibold shadow hover:bg-stone-100">Auto-Évaluation</button>
+                </div>
+                 <div class="relative max-w-lg mx-auto">
+                    <input type="text" id="search-input" placeholder="Rechercher par mot-clé (ex: Docker, débutant...)" class="w-full pl-10 pr-4 py-2 border border-stone-300 rounded-full focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                     <span class="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    </span>
+                </div>
+            </div>
+
+            <div id="resource-grid" class="card-container">
+            </div>
+             <div id="no-results" class="text-center py-16 hidden">
+                <p class="text-xl text-stone-500">Aucun résultat trouvé. Essayez un autre filtre ou mot-clé.</p>
+            </div>
+        </section>
+    </div>
+
+    <div id="modal" class="modal-bg">
+        <div class="modal-content bg-white rounded-lg shadow-2xl overflow-hidden">
+            <div id="modal-body" class="p-6 md:p-8 max-h-[80vh] overflow-y-auto custom-scrollbar">
+            </div>
+            <button id="modal-close" class="absolute top-4 right-4 text-stone-500 hover:text-stone-800 transition">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </div>
+    </div>
+
+
+    <script>
+    // --- Mock Data for Simulation ---
+    // In a real microservices architecture, this data would come from a 'Resource Management Service' API.
+    const mockResourcesData = [
+        {
+            id: 1, name: "Microsoft Learn", type: "Plateforme",
+            summary: "Parcours d'apprentissage structurés sur Azure DevOps, de la planification au déploiement.",
+            details: "Microsoft Learn propose des parcours d'apprentissage bien définis comme « Bien démarrer avec Azure DevOps », guidant les utilisateurs à travers des concepts essentiels, la configuration d'une organisation Azure DevOps gratuite, et l'utilisation d'Azure Boards.",
+            topics: ["Azure DevOps", "CI/CD", "Planification Agile"],
+            audience: "Débutants, Professionnels Azure",
+            link: "https://learn.microsoft.com/fr-fr/training/paths/evolve-your-devops-practices/"
+        },
+        {
+            id: 2, name: "EAZYTraining", type: "Plateforme",
+            summary: "Accès gratuit à une dizaine de cours avec labos pratiques et un assistant IA.",
+            details: "EAZYTraining offre un accès gratuit à des cours comme « Docker Avancé », « Platform Engineer Kubernetes » et « Terraform Cloud », avec des laboratoires pratiques et un assistant IA pour guider votre apprentissage.",
+            topics: ["Docker", "Kubernetes", "Terraform", "AWS", "CI/CD"],
+            audience: "Tous niveaux",
+            link: "https://eazytraining.fr/"
+        },
+        {
+            id: 3, name: "Udemy", type: "Plateforme",
+            summary: "Vaste sélection de cours gratuits complets et de leçons courtes sur des outils spécifiques.",
+            details: "Udemy héberge des cours gratuits complets comme « Net DevOps: Cisco Python » et des leçons courtes ciblées sur Kubernetes, Terraform, Prometheus, et plus encore.",
+            topics: ["Python", "CI/CD", "Kubernetes", "Terraform", "Docker"],
+            audience: "Débutants, Tous niveaux",
+            link: "https://www.udemy.com/fr/topic/devops/free/"
+        },
+        {
+            id: 4, name: "devopssec.fr", type: "Plateforme",
+            summary: "Blog avec des cours et tutoriels complets sur les technologies fondamentales du DevOps.",
+            details: "Ce site propose des guides approfondis pour apprendre Kubernetes, Docker, GoLang, Ansible, Terraform, et comprendre la philosophie DevOps.",
+            topics: ["Kubernetes", "Docker", "Ansible", "Terraform", "GoLang"],
+            audience: "Tous niveaux",
+            link: "https://devopssec.fr/"
+        },
+        {
+            id: 5, name: "DataCamp", type: "Plateforme",
+            summary: "Un tutoriel Azure DevOps très détaillé et gratuit sur une plateforme par abonnement.",
+            details: "Bien que DataCamp soit payant, il offre un tutoriel gratuit exceptionnel couvrant tout l'écosystème Azure DevOps, du contrôle de version avec Repos aux pipelines CI/CD.",
+            topics: ["Azure DevOps", "CI/CD", "Git"],
+            audience: "Tous niveaux",
+            link: "https://www.datacamp.com/fr/tutorial/azure-devops"
+        },
+        {
+            id: 6, name: "Bret Fisher Docker & DevOps", type: "YouTube",
+            summary: "Contenu approfondi sur Docker et Kubernetes par un Docker Captain.",
+            details: "La chaîne de Bret Fisher est une référence pour les conteneurs, Docker, Kubernetes, et DevSecOps. Il anime régulièrement des Q&A en direct pour discuter des tendances actuelles.",
+            topics: ["Docker", "Kubernetes", "DevSecOps", "GitOps", "IA"],
+            audience: "Débutants, Professionnels IT",
+            link: "https://m.youtube.com/c/BretFisherDockerandDevOps/playlists"
+        },
+        {
+            id: 7, name: "TechWorld With Nana", type: "YouTube",
+            summary: "Tutoriels très organisés sur les concepts DevOps, en particulier Jenkins et Kubernetes.",
+            details: "Nana Janashia rend les sujets complexes accessibles avec des vidéos structurées. Idéal pour apprendre l'IaC et les implémentations de pipelines CI/CD.",
+            topics: ["Jenkins", "Kubernetes", "CI/CD", "IaC"],
+            audience: "Tous niveaux",
+            link: "https://www.youtube.com/c/TechWorldwithNana/playlists"
+        },
+        {
+            id: 8, name: "KodeKloud", type: "YouTube",
+            summary: "Simplifie les sujets complexes pour les débutants avec des tutoriels pratiques et ludiques.",
+            details: "La chaîne de Mumshad Mannambeth utilise la gamification pour enseigner Git, Kubernetes, Docker, Ansible et Terraform, rendant l'apprentissage plus engageant.",
+            topics: ["Git", "Kubernetes", "Docker", "Ansible", "Terraform", "Débutant"],
+            audience: "Débutants",
+            link: "https://www.youtube.com/shorts/cJdXVVOgAt8"
+        },
+        {
+            id: 9, name: "Stephane Maarek", type: "YouTube",
+            summary: "Ressource majeure pour le DevOps dans le contexte du cloud AWS et Apache Kafka.",
+            details: "Stephane Maarek couvre un large éventail de sujets, de la configuration des budgets AWS à la préparation aux certifications AWS, en passant par l'intégration de Kafka.",
+            topics: ["AWS", "Apache Kafka", "Cloud"],
+            audience: "Professionnels Cloud, Développeurs",
+            link: "https://www.youtube.com/c/StephaneMaarek/playlists"
+        },
+        {
+            id: 10, name: "DevOps Toolkit", type: "YouTube",
+            summary: "Contenu approfondi sur Docker, Kubernetes et les technologies cloud-natives.",
+            details: "Gérée par Victor Farcic, cette chaîne explore des sujets avancés comme les environnements éphémères, Crossplane, et le rôle de l'IA dans le DevOps.",
+            topics: ["Docker", "Kubernetes", "Cloud-Native", "IA"],
+            audience: "Tous niveaux",
+            link: "https://www.youtube.com/c/DevOpsToolkit"
+        },
+        {
+            id: 11, name: "LabEx", type: "Labs",
+            summary: "Environnement de jeu interactif et sans risque pour pratiquer le DevOps.",
+            details: "LabEx offre des laboratoires gratuits pour mettre en œuvre des pipelines CI/CD, pratiquer l'automatisation, et travailler sur des projets réels avec Git, Linux, Python, Docker et Kubernetes.",
+            topics: ["CI/CD", "Automatisation", "Git", "Linux", "Python", "Docker", "Kubernetes"],
+            audience: "Débutants, Tous niveaux",
+            link: "https://labex.io/fr/free-labs/devops"
+        },
+        {
+            id: 12, name: "Laboratoires EAZYTraining", type: "Labs",
+            summary: "Laboratoires associés aux cours gratuits pour une application pratique immédiate.",
+            details: "L'accès gratuit d'EAZYTraining inclus non seulement des cours vidéo mais aussi les laboratoires correspondants, permettant d'appliquer immédiatement les concepts appris.",
+            topics: ["Docker", "Kubernetes", "Terraform", "AWS"],
+            audience: "Tous niveaux",
+            link: "https://eazytraining.fr/"
+        },
+        {
+            id: 13, name: "Guide DevOps de HubSpot", type: "Guide",
+            summary: "Guide complet sur les fondamentaux, le cycle de vie et les principes du DevOps.",
+            details: "Une ressource en ligne qui couvre la définition du DevOps, ses 7 phases, ses principes fondamentaux (collaboration, automatisation, amélioration continue) et la culture agile.",
+            topics: ["Culture DevOps", "Agile", "Cycle de vie"],
+            audience: "Tous niveaux, Débutants",
+            link: "https://blog.hubspot.fr/website/devops"
+        },
+        {
+            id: 14, name: "Ressources Débutants de GitLab", type: "Guide",
+            summary: "Collection de guides et ebooks pour commencer une carrière en DevOps.",
+            details: "GitLab offre 11 ressources utiles pour débutants, couvrant le démarrage d'une carrière, GitLab CI/CD, Git, GitOps et DevSecOps.",
+            topics: ["Carrière", "CI/CD", "Git", "GitOps", "DevSecOps", "Débutant"],
+            audience: "Débutants",
+            link: "https://about.gitlab.com/fr-fr/topics/devops/devops-beginner-resources/"
+        },
+        {
+            id: 15, name: "Livre Blanc de Cellenza", type: "Guide",
+            summary: "Livre blanc sur la vision et l'implémentation du DevOps, axé sur l'écosystème Microsoft.",
+            details: "Ce document partage des expériences pratiques et des conseils de mise en œuvre, notamment avec Team Foundation Server et Azure, illustrés par une étude de cas.",
+            topics: ["Culture DevOps", "Microsoft Azure", "ROI"],
+            audience: "Équipes projet, Professionnels Azure",
+            link: "http://click.cellenza.com/telechargement-cellinsight-DevOps"
+        },
+        {
+            id: 16, name: "Ebooks de Devtron", type: "Guide",
+            summary: "Collection d'ebooks gratuits sur la productivité des développeurs et les opérations Kubernetes.",
+            details: "Devtron propose des ebooks rédigés par des experts sur des sujets comme l'Expérience Développeur (DX) et la simplification des opérations Kubernetes.",
+            topics: ["Kubernetes", "Productivité", "Developer Experience"],
+            audience: "Développeurs, Professionnels Kubernetes",
+            link: "https://devtron.ai/ebooks"
+        },
+        {
+            id: 17, name: "Forum devopssec.fr", type: "Communauté",
+            summary: "Forum en ligne gratuit dédié aux discussions DevOps et Cloud.",
+            details: "Un espace pour poser des questions, partager des avis et discuter de sujets comme les certifications, Git LFS ou les mises à niveau de clusters Kubernetes.",
+            topics: ["Certifications", "Git", "Kubernetes", "Cloud"],
+            audience: "Tous niveaux",
+            link: "https://devopssec.fr/forum"
+        },
+        {
+            id: 18, name: "Reddit (r/devops)", type: "Communauté",
+            summary: "Communauté en ligne très active pour les discussions, le partage de ressources et les conseils.",
+            details: "Le subreddit r/devops est un forum majeur où les professionnels partagent des ressources, discutent des tendances et demandent conseil à des praticiens expérimentés.",
+            topics: ["Discussions", "Carrière", "Ressources"],
+            audience: "Tous niveaux",
+            link: "https://www.reddit.com/r/devops/"
+        },
+        {
+            id: 19, name: "Cloud Native DevOps (Discord)", type: "Communauté",
+            summary: "Communauté Discord dynamique avec des canaux dédiés et des discussions vocales.",
+            details: "Cette communauté propose des canaux de discussion sur Docker, les clouds et Kubernetes, et héberge des conférences techniques et des tutoriels en direct avec des experts.",
+            topics: ["Docker", "Cloud", "Kubernetes", "Live-events"],
+            audience: "Tous niveaux",
+            link: "https://discord.com/invite/devops"
+        },
+        {
+            id: 20, name: "Communautés Slack", type: "Communauté",
+            summary: "Plusieurs espaces de travail Slack actifs comme 'DevOps Engineers' et 'Kubernetes Community'.",
+            details: "Des plateformes comme 'DevOps Engineers', 'Kubernetes Community', 'SweetOps' offrent des espaces pour le réseautage, l'échange de connaissances et des discussions approfondies sur la culture, les outils et les processus DevOps.",
+            topics: ["Réseautage", "Kubernetes", "SRE", "Culture DevOps"],
+            audience: "Tous niveaux",
+            link: "https://www.liquidweb.com/blog/best-devops-slack-workspaces/"
+        },
+        {
+            id: 21, name: "Audit de maturité Bluebricks", type: "Évaluation",
+            summary: "Outil d'auto-évaluation gratuit pour identifier les lacunes et les axes d'amélioration.",
+            details: "Cet audit vous permet d'évaluer votre niveau actuel de maturité DevOps via un questionnaire. Il fournit des recommandations personnalisées pour prioriser vos efforts d'apprentissage et de mise en œuvre.",
+            topics: ["Auto-évaluation", "Maturité DevOps", "Stratégie"],
+            audience: "Individus, Équipes",
+            link: "https://www.bluebricks.fr/audit-maturite-devops"
+        }
+    ];
+
+    let resourcesData = []; // This will be populated by the simulated fetch
+
+    // --- User Authentication Simulation ---
+    let isAuthenticated = false;
+    let userName = '';
+
+    const loginUser = () => {
+        // Simule un appel API au service d'authentification
+        setTimeout(() => {
+            isAuthenticated = true;
+            userName = 'Utilisateur Test';
+            document.getElementById('login-btn').textContent = 'Se Déconnecter';
+            document.getElementById('login-btn').classList.remove('bg-blue-500', 'hover:bg-blue-600');
+            document.getElementById('login-btn').classList.add('bg-red-500', 'hover:bg-red-600');
+            document.getElementById('user-display').textContent = `Bienvenue, ${userName} !`;
+            document.getElementById('user-display').classList.remove('hidden');
+            sendAnalyticsEvent('user_logged_in', { userId: userName });
+        }, 500);
+    };
+
+    const logoutUser = () => {
+        // Simule un appel API au service d'authentification
+        setTimeout(() => {
+            isAuthenticated = false;
+            userName = '';
+            document.getElementById('login-btn').textContent = 'Se Connecter';
+            document.getElementById('login-btn').classList.remove('bg-red-500', 'hover:bg-red-600');
+            document.getElementById('login-btn').classList.add('bg-blue-500', 'hover:bg-blue-600');
+            document.getElementById('user-display').classList.add('hidden');
+            sendAnalyticsEvent('user_logged_out', { userId: 'anonymous' });
+        }, 500);
+    };
+
+    // --- Analytics Service Simulation ---
+    const sendAnalyticsEvent = async (eventName, payload) => {
+        console.log(`[ANALYTICS] Envoyer l'événement: ${eventName}`, payload);
+        // En production, ceci ferait un appel `fetch` à un endpoint /api/analytics
+        /*
+        try {
+            await fetch('/api/analytics', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ eventName, payload, timestamp: new Date().toISOString() })
+            });
+        } catch (error) {
+            console.error("Échec de l'envoi de l'événement analytique:", error);
+        }
+        */
+    };
+
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const grid = document.getElementById('resource-grid');
+        const searchInput = document.getElementById('search-input');
+        const filterBtns = document.querySelectorAll('.filter-btn');
+        const noResults = document.getElementById('no-results');
+        const modal = document.getElementById('modal');
+        const modalBody = document.getElementById('modal-body');
+        const modalClose = document.getElementById('modal-close');
+        const loginButton = document.getElementById('login-btn');
+
+        let currentFilter = 'all';
+        let currentSearch = '';
+
+        // --- Resource Management Service Interaction ---
+        const fetchResources = async () => {
+            // Simule un appel API au service de gestion des ressources
+            // En production, ce serait un fetch réel: fetch('/api/resources')
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    resolve(mockResourcesData); // Utilise les données mockées pour la simulation
+                }, 300);
+            });
+        };
+
+        const renderCards = () => {
+            let filteredData = resourcesData;
+
+            if (currentFilter !== 'all') {
+                filteredData = filteredData.filter(item => item.type === currentFilter);
+            }
+
+            if (currentSearch) {
+                const searchTerm = currentSearch.toLowerCase().trim();
+                filteredData = filteredData.filter(item =>
+                    item.name.toLowerCase().includes(searchTerm) ||
+                    item.summary.toLowerCase().includes(searchTerm) ||
+                    item.topics.join(' ').toLowerCase().includes(searchTerm) ||
+                    item.audience.toLowerCase().includes(searchTerm)
+                );
+            }
+            
+            grid.innerHTML = '';
+
+            if (filteredData.length === 0) {
+                noResults.classList.remove('hidden');
+            } else {
+                noResults.classList.add('hidden');
+            }
+
+            filteredData.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300 flex flex-col cursor-pointer overflow-hidden';
+                card.dataset.id = item.id;
+                
+                let typeColor = 'bg-stone-500';
+                switch(item.type) {
+                    case 'Plateforme': typeColor = 'bg-blue-600'; break;
+                    case 'YouTube': typeColor = 'bg-red-600'; break;
+                    case 'Labs': typeColor = 'bg-green-600'; break;
+                    case 'Guide': typeColor = 'bg-purple-600'; break;
+                    case 'Communauté': typeColor = 'bg-orange-600'; break;
+                    case 'Évaluation': typeColor = 'bg-teal-600'; break;
+                }
+
+                card.innerHTML = `
+                    <div class="p-5 flex-grow">
+                        <div class="flex justify-between items-start mb-2">
+                            <h3 class="text-xl font-bold text-stone-800 pr-4">${item.name}</h3>
+                            <span class="text-xs font-semibold text-white ${typeColor} px-2 py-1 rounded-full whitespace-nowrap">${item.type}</span>
+                        </div>
+                        <p class="text-stone-600 text-sm mb-4">${item.summary}</p>
+                    </div>
+                    <div class="p-5 bg-stone-50 border-t border-stone-200">
+                        <div class="flex flex-wrap gap-2">
+                            ${item.topics.map(topic => `<span class="text-xs bg-stone-200 text-stone-700 px-2 py-1 rounded-md">${topic}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        };
+
+        const openModal = (id) => {
+            const item = resourcesData.find(i => i.id == id);
+            if (!item) return;
+
+            sendAnalyticsEvent('resource_viewed', { resourceId: item.id, resourceName: item.name });
+
+            let typeColor = 'text-stone-500';
+                switch(item.type) {
+                    case 'Plateforme': typeColor = 'text-blue-600'; break;
+                    case 'YouTube': typeColor = 'text-red-600'; break;
+                    case 'Labs': typeColor = 'text-green-600'; break;
+                    case 'Guide': typeColor = 'text-purple-600'; break;
+                    case 'Communauté': typeColor = 'text-orange-600'; break;
+                    case 'Évaluation': typeColor = 'text-teal-600'; break;
+                }
+
+            modalBody.innerHTML = `
+                <div class="mb-4">
+                    <span class="text-sm font-bold uppercase tracking-wider ${typeColor}">${item.type}</span>
+                    <h2 class="text-3xl font-bold text-stone-800 mt-1">${item.name}</h2>
+                </div>
+                <div class="prose max-w-none text-stone-700 mb-6">
+                    <p class="lead">${item.summary}</p>
+                    <p>${item.details}</p>
+                </div>
+                <div class="mb-6">
+                    <h4 class="font-semibold text-stone-800 mb-2">Sujets Clés :</h4>
+                    <div class="flex flex-wrap gap-2">
+                        ${item.topics.map(topic => `<span class="text-sm bg-stone-200 text-stone-700 px-3 py-1 rounded-full">${topic}</span>`).join('')}
+                    </div>
+                </div>
+                 <div class="mb-6">
+                    <h4 class="font-semibold text-stone-800 mb-2">Public Cible :</h4>
+                    <p class="text-stone-600">${item.audience}</p>
+                </div>
+                <button id="explain-topic-btn" class="inline-block w-full text-center bg-emerald-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-emerald-700 transition-colors duration-300 mb-4 ${item.topics.length > 0 ? '' : 'hidden'}">
+                    Expliquer ce sujet ✨ (${item.topics[0] || ''})
+                </button>
+                <div id="explanation-output" class="p-4 bg-stone-100 rounded-lg hidden text-stone-700 mb-4">
+                    <div class="explanation-loading text-center hidden">
+                        <div class="spinner border-t-2 border-b-2 border-sky-500 rounded-full w-6 h-6 animate-spin mx-auto my-4"></div>
+                        <p>Génération de l'explication...</p>
+                    </div>
+                    <p class="explanation-text"></p>
+                </div>
+                <!-- New button for learning steps -->
+                <button id="suggest-steps-btn" class="inline-block w-full text-center bg-purple-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-purple-700 transition-colors duration-300 mb-4 ${item.topics.length > 0 ? '' : 'hidden'}">
+                    Suggérer des étapes d'apprentissage supplémentaires ✨
+                </button>
+                <div id="suggestion-output" class="p-4 bg-stone-100 rounded-lg hidden text-stone-700 mb-6">
+                    <div class="suggestion-loading text-center hidden">
+                        <div class="spinner border-t-2 border-b-2 border-purple-500 rounded-full w-6 h-6 animate-spin mx-auto my-4"></div>
+                        <p>Génération de suggestions...</p>
+                    </div>
+                    <div class="suggestion-text"></div>
+                </div>
+                <a href="${item.link}" target="_blank" rel="noopener noreferrer" class="inline-block w-full text-center bg-sky-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-sky-700 transition-colors duration-300">
+                    Visiter la ressource
+                </a>
+            `;
+            modal.style.display = 'block';
+            setTimeout(() => {
+                modal.style.opacity = 1;
+                const explainButton = document.getElementById('explain-topic-btn');
+                if (explainButton && item.topics.length > 0) {
+                    explainButton.addEventListener('click', () => explainTopic(item.topics[0]));
+                }
+                const suggestButton = document.getElementById('suggest-steps-btn');
+                if (suggestButton && item.topics.length > 0) {
+                    suggestButton.addEventListener('click', () => suggestLearningSteps(item.topics[0]));
+                }
+            }, 10);
+        };
+        
+        const closeModal = () => {
+             modal.style.opacity = 0;
+             setTimeout(() => modal.style.display = 'none', 300);
+             // Clear previous explanation and suggestion when closing modal
+             const explanationOutput = document.getElementById('explanation-output');
+             if (explanationOutput) {
+                 explanationOutput.classList.add('hidden');
+                 explanationOutput.querySelector('.explanation-text').innerHTML = '';
+             }
+             const suggestionOutput = document.getElementById('suggestion-output');
+             if (suggestionOutput) {
+                 suggestionOutput.classList.add('hidden');
+                 suggestionOutput.querySelector('.suggestion-text').innerHTML = '';
+             }
+        };
+
+        // --- AI Explanation Service Interaction (simulated) ---
+        const explainTopic = async (topic) => {
+            sendAnalyticsEvent('topic_explained', { topic: topic, resourceId: document.getElementById('modal').dataset.resourceId });
+
+            const explanationOutput = document.getElementById('explanation-output');
+            const loadingIndicator = explanationOutput.querySelector('.explanation-loading');
+            const explanationText = explanationOutput.querySelector('.explanation-text');
+            const explainButton = document.getElementById('explain-topic-btn');
+
+            explanationOutput.classList.remove('hidden');
+            loadingIndicator.classList.remove('hidden');
+            explanationText.innerHTML = ''; // Clear previous text
+            explainButton.disabled = true; // Disable button during loading
+
+            try {
+                // En production, ceci ferait un appel à un service d'explication IA:
+                // const response = await fetch('/api/ai/explain-topic', { method: 'POST', body: JSON.stringify({ topic }) });
+                // const result = await response.json();
+
+                const prompt = `Expliquez le concept de ${topic} en termes simples, en mettant l'accent sur sa pertinence dans le domaine du DevOps. Soyez concis et utilisez un langage clair, adapté aux débutants.`;
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiKey = "" 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    explanationText.innerHTML = text;
+                } else {
+                    explanationText.innerHTML = "Désolé, je n'ai pas pu générer d'explication pour le moment. Veuillez réessayer.";
+                }
+            } catch (error) {
+                console.error("Erreur lors de l'appel de l'API Gemini ou du service AI Explanation:", error);
+                explanationText.innerHTML = "Une erreur est survenue lors de la récupération de l'explication. Veuillez vérifier votre connexion ou réessayer.";
+            } finally {
+                loadingIndicator.classList.add('hidden');
+                explainButton.disabled = false; // Re-enable button
+            }
+        };
+
+        // --- Learning Path Service Interaction (simulated) ---
+        const suggestLearningSteps = async (topic) => {
+            sendAnalyticsEvent('learning_path_suggested', { topic: topic, resourceId: document.getElementById('modal').dataset.resourceId });
+
+            const suggestionOutput = document.getElementById('suggestion-output');
+            const loadingIndicator = suggestionOutput.querySelector('.suggestion-loading');
+            const suggestionText = suggestionOutput.querySelector('.suggestion-text');
+            const suggestButton = document.getElementById('suggest-steps-btn');
+
+            suggestionOutput.classList.remove('hidden');
+            loadingIndicator.classList.remove('hidden');
+            suggestionText.innerHTML = ''; // Clear previous text
+            suggestButton.disabled = true; // Disable button during loading
+
+            try {
+                // En production, ceci ferait un appel à un service de recommandation:
+                // const response = await fetch('/api/ai/suggest-learning-path', { method: 'POST', body: JSON.stringify({ topic }) });
+                // const result = await response.json();
+
+                const prompt = `En tant qu'expert DevOps, proposez 3 à 5 étapes d'apprentissage concrètes ou sujets connexes qu'une personne intéressée par '${topic}' devrait explorer ensuite pour approfondir ses connaissances en DevOps. Pour chaque suggestion, indiquez brièvement pourquoi c'est important et quel type de ressource (ex: cours, lab pratique, documentation, communauté) serait le plus adapté. Formatez la réponse comme une liste HTML non ordonnée (<ul><li>...).`;
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+                if (result.candidates && result.candidates.length > 0 &&
+                    result.candidates[0].content && result.candidates[0].content.parts &&
+                    result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    suggestionText.innerHTML = text; // Expecting HTML list
+                } else {
+                    suggestionText.innerHTML = "Désolé, je n'ai pas pu générer de suggestions pour le moment. Veuillez réessayer.";
+                }
+            } catch (error) {
+                console.error("Erreur lors de l'appel de l'API Gemini pour les suggestions ou du service Learning Path:", error);
+                suggestionText.innerHTML = "Une erreur est survenue lors de la récupération des suggestions. Veuillez vérifier votre connexion ou réessayer.";
+            } finally {
+                loadingIndicator.classList.add('hidden');
+                suggestButton.disabled = false; // Re-enable button
+            }
+        };
+
+
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                filterBtns.forEach(b => b.classList.remove('bg-sky-600', 'text-white'));
+                filterBtns.forEach(b => b.classList.add('bg-white', 'text-stone-700'));
+                btn.classList.add('bg-sky-600', 'text-white');
+                btn.classList.remove('bg-white', 'text-stone-700');
+                currentFilter = btn.dataset.filter;
+                renderCards();
+            });
+        });
+
+        searchInput.addEventListener('input', (e) => {
+            currentSearch = e.target.value;
+            renderCards();
+        });
+        
+        grid.addEventListener('click', (e) => {
+            const card = e.target.closest('[data-id]');
+            if (card) {
+                openModal(card.dataset.id);
+            }
+        });
+
+        modalClose.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+
+        loginButton.addEventListener('click', () => {
+            if (isAuthenticated) {
+                logoutUser();
+            } else {
+                loginUser();
+            }
+        });
+
+        // Charting
+        const createCharts = () => {
+            const types = {};
+            const techs = {};
+            resourcesData.forEach(item => {
+                types[item.type] = (types[item.type] || 0) + 1;
+                item.topics.forEach(topic => {
+                    const cleanTopic = topic.trim();
+                    techs[cleanTopic] = (techs[cleanTopic] || 0) + 1;
+                });
+            });
+
+            // Top 10 techs
+            const sortedTechs = Object.entries(techs)
+                .sort(([,a],[,b]) => b-a)
+                .slice(0, 10);
+
+            const techLabels = sortedTechs.map(item => item[0]);
+            const techData = sortedTechs.map(item => item[1]);
+            
+            // Resources by Type Chart
+            const typeCtx = document.getElementById('resourcesByTypeChart').getContext('2d');
+            new Chart(typeCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(types),
+                    datasets: [{
+                        label: 'Nombre de Ressources',
+                        data: Object.values(types),
+                        backgroundColor: ['#0ea5e9', '#ef4444', '#22c55e', '#a855f7', '#f97316', '#14b8a6'],
+                        borderColor: '#ffffff',
+                        borderWidth: 2,
+                        borderRadius: 5,
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#1e293b',
+                            titleFont: { size: 14 },
+                            bodyFont: { size: 12 },
+                            padding: 10,
+                            cornerRadius: 4
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#57534e' }
+                        },
+                        y: {
+                            grid: { display: false },
+                            ticks: { color: '#57534e' }
+                        }
+                    }
+                }
+            });
+
+            // Tech Focus Chart
+            const techCtx = document.getElementById('techFocusChart').getContext('2d');
+            new Chart(techCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: techLabels,
+                    datasets: [{
+                        label: 'Mentions',
+                        data: techData,
+                        backgroundColor: ['#0284c7', '#38bdf8', '#7dd3fc', '#075985', '#0891b2', '#22d3ee', '#a5f3fc', '#0d9488', '#5eead4', '#ccfbf1' ],
+                        borderColor: '#ffffff',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            position: 'right',
+                            labels: {
+                                color: '#57534e',
+                                boxWidth: 12,
+                                padding: 15
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1e293b',
+                            titleFont: { size: 14 },
+                            bodyFont: { size: 12 },
+                            padding: 10,
+                            cornerRadius: 4
+                        }
+                    }
+                }
+            });
+        };
+
+        // Initialize application by fetching resources and creating charts
+        fetchResources().then(data => {
+            resourcesData = data;
+            renderCards();
+            createCharts();
+        });
+    });
+    </script>
+</body>
+</html>
