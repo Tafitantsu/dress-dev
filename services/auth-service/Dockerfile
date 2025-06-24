@@ -14,10 +14,11 @@ COPY requirements.txt .
 # Using --no-cache-dir to reduce image size
 # Using --user to install packages as the non-root user (if possible and makes sense for the build step)
 # However, for system-level dependencies often needed by psycopg2-binary, it's better to install them as root first.
-RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev && \
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libpq-dev curl && \
     pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt && \
     apt-get purge -y --auto-remove gcc libpq-dev && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the rest of the application code into the container at /app
